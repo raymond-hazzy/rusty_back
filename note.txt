@@ -1,0 +1,121 @@
+///////////////////////////////////////////HttpServer
+ is the backbone supporting our application. It takes care of things like:
+    • where should the application be listening for incoming requests?
+    A TCP socket
+    (e.g. 127.0.0.1:8000)? A Unix domain socket?
+    • what is the maximum number of concurrent connections that we should allow? How many new
+    connections per unit of time?
+    • should we enable transport layer security (TLS)?
+    • etc.
+...HttpServer, in other words, handles all transport level concerns.
+
+/////////////////////////////////////////////APP
+...App is where all your application logic lives: routing, middlewares, request handlers, etc.
+    App is the component whose job is to take an incoming request as input and spit out a response.
+
+////////////////////////////////////////////ENDPOINTS/ ROUTES
+route takes two parameters:
+    • path, a string, possibly templated (e.g. "/{name}") to accommodate dynamic path segments;
+    • route, an instance of the Route struct
+
+ ////////////////////////////////////////////Rust's Asynchronous Model
+Rust uses a "pull" model for async - futures are lazy and need to be "pulled" to make progress
+Other languages (JavaScript, Python) use a "push" model - async tasks are actively scheduled
+In Rust, a Future only progresses when something calls its poll() method
+
+// This doesn't work directly:
+async fn main() -> Result<(), std::io::Error> {
+    // Async code here
+}
+The Solution: #[tokio::main] Macro
+.What it does:
+    The macro transforms your async main into a synchronous one that:
+    Creates a Tokio runtime
+    Runs your async code on it
+
+///////
+///////////////////////////Before Macro Expansion:
+rust
+#[tokio::main]
+async fn main() -> Result<(), std::io::Error> {
+    // Your async code
+    server.run().await
+}
+
+////////////////////////////////After Macro Expansion (what actually gets compiled):
+
+fn main() -> Result<(), std::io::Error> {
+    // Wrap async code in a future
+    let body = async move {
+        // Your original async main body here
+        server.run().await
+    };
+    
+    // Create and run the Tokio runtime
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed building the Runtime")
+        .block_on(body)  // This drives the future to completion
+}
+
+///////////////
+
+...Before Macro Expansion:
+
+#[tokio::main]
+async fn main() -> Result<(), std::io::Error> {
+    // Your async code
+    server.run().await
+}
+
+...After Macro Expansion (what actually gets compiled):
+
+fn main() -> Result<(), std::io::Error> {
+    // Wrap async code in a future
+    let body = async move {
+        // Your original async main body here
+        server.run().await
+    };
+    
+    // Create and run the Tokio runtime
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed building the Runtime")
+        .block_on(body)  // This drives the future to completion
+}
+
+
+///////////////////////////////////Health Check Handler Example
+.Original with warning:
+
+async fn health_check(req: HttpRequest) -> impl Responder {
+    HttpResponse::Ok()
+}
+// Warning: unused variable `req`
+Fixed version:
+
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok()
+}
+// actix-web is smart enough to accept handlers without request parameters
+
+.......full pic.
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok()  // Returns 200 OK with empty body
+}
+
+ #[tokio::main] transforms this async main into sync code
+#[tokio::main]
+async fn main() -> Result<(), std::io::Error> {
+    HttpServer::new(|| {
+        App::new()
+            .route("/health_check", web::get().to(health_check))
+    })
+    .bind("127.0.0.1:8000")?
+    .run()
+    .await
+}
