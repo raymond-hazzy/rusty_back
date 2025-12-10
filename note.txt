@@ -119,3 +119,196 @@ async fn main() -> Result<(), std::io::Error> {
     .run()
     .await
 }
+
+//////////////////////////////////////TESTING AN END POINT
+
+////1. Embedded Tests (#[cfg(test)] mod tests)
+
+// In your main code file (e.g., src/lib.rs or src/main.rs)
+// fn my_private_function() -> u32 {
+//     42
+// }
+
+// #[cfg(test)]  // Only compiled when running tests
+// mod tests {
+//     use super::*;  // Can access private items!
+    
+//     #[test]
+//     fn test_private() {
+//         assert_eq!(my_private_function(), 42);
+//     }
+// }
+
+Key Points:
+
+    Lives in same file as the code being tested
+    Can test private functions and internals
+    Part of the same binary
+    Great for unit testing internal components
+
+////2. External Tests (tests/ folder)
+
+your_project/
+├── src/
+│   └── lib.rs    # Library code
+└── tests/
+    └── health_check.rs  # Integration test
+.Key Points:
+
+    Separate binaries
+    Can only test public API
+    Mimics how users would use your library
+    Great for integration testing
+
+////3. Documentation Tests (Doc Tests)
+
+/// Adds two numbers together
+/// 
+/// ```
+/// use my_crate::add;
+/// assert_eq!(add(2, 2), 4);
+/// ```
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+Key Points:
+
+    Tests in documentation comments
+    Verifies examples work
+    Only tests public functions
+
+////////////////////////////
+Library crate: Contains all the logic
+Binary crate: Thin wrapper that launches the library
+
+...........................How tokio::spawn Works:
+
+Test Thread
+    ├── spawn_app()  // Starts server in background
+    ├── HTTP Request // Tests run while server listens
+    └── Test Assertions
+
+Background Thread
+    └── Server listening for requests
+
+.Can't run tests in parallel (port conflict)
+.Might conflict with other programs
+
+...solution = port 0 magic
+
+//////////////////DATABASE FORMAT FOR NAME AND EMAIL HANDLING
+.if the name is Le Guin and the email is ursula_le_guin@gmail.com the POST request body
+  should be name=le%20guin&email=ursula_le_guin%40gmail.com (spaces are replaced by %20 while @ becomes %40
+
+• if a valid pair of name and email is supplied using the application/x-www-form-urlencoded format
+the backend should return a 200 OK;
+• if either name or email are missing the backend should return a 400 BAD REQUEST.
+
+/////////////////
+An extractor can be accessed as an argument to a handler function. Actix-web supports up to 10
+extractors per handler function. Argument position does not matter.
+Example:
+
+use actix_web::web;
+#[derive(serde::Deserialize)]
+struct FormData {
+username: String,
+}
+/// Extract form data using serde.
+/// This handler get called only if content type is *x-www-form-urlencoded*
+/// and content of the request could be deserialized to a `FormData` struct
+fn index(form: web::Form<FormData>) -> String {
+format!("Welcome {}!", form.username)
+}
+
+What are Extractors?
+Extractors are middlemen that:
+
+Look at incoming HTTP requests
+
+Pull out specific information
+
+Convert it to Rust types
+
+Pass it to your handler function
+
+Think of them as waiters at a restaurant:
+
+Customer (HTTP request) comes in
+
+Waiter (extractor) takes their order (extracts data)
+
+Chef (your handler) gets clean, prepared ingredients (Rust structs)
+
+Available Extractors:
+rust
+web::Path<T>    // Gets URL path parameters: /users/{id}
+web::Query<T>   // Gets query string: ?name=John&age=30
+web::Json<T>    // Gets JSON body
+web::Form<T>    // Gets HTML form data (what we need!)
+web::Data<T>    // Gets shared application data
+
+
+Step 1: Define Your Data Structure
+rust
+#[derive(serde::Deserialize)]
+struct FormData {
+    email: String,
+    name: String,
+}
+What this does:
+
+Creates a Rust struct to hold form data
+
+#[derive(serde::Deserialize)] = "Hey Rust, automatically generate code to convert form data into this struct"
+
+
+Step 2: Use in Handler
+rust
+async fn subscribe(form: web::Form<FormData>) -> HttpResponse {
+    // form.email and form.name are now available!
+    println!("Email: {}", form.email);
+    println!("Name: {}", form.name);
+    
+    HttpResponse::Ok().finish()
+}
+What happens:
+
+User submits form → email=test@example.com&name=John
+
+Actix-web sees web::Form<FormData> parameter
+
+It calls Form::from_request() to extract data
+
+Converts string to FormData struct
+
+Passes it to your handler
+
+////////////////////////////////
+The Magic: FromRequest Trait
+What is a Trait?
+Think of it as an interface or contract:
+
+"If you implement this trait, you promise to have these methods"
+
+"If you have this trait, I know I can call these methods on you"
+
+The FromRequest Contract:
+rust
+pub trait FromRequest {
+    async fn from_request(
+        req: &HttpRequest,
+        payload: &mut Payload
+    ) -> Result<Self, Error>;
+}
+Translation:
+
+"If you want to be an extractor, you must:
+
+Have a from_request method
+
+It takes the HTTP request and its body
+
+It returns either Self (your type) or an error"
+
+
