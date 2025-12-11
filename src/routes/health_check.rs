@@ -10,7 +10,13 @@
 // }
 
 /////////////////////////////////////
+
+/// src/routes/heath_check.rs
+
 use std::net::TcpListener;
+use sqlx::{PgConnection, Connection};
+use rusty_back::config::get_configuration;
+
 fn spawn_app() -> String {
     //BIND TO RANDOM PORT. OS picks random port
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -51,10 +57,16 @@ async fn health_check_works() {
 async fn subscribe_returns_a_200_for_valid_form_data() {
     //Arrange
     let app_address = spawn_app();
-    let client = reqwest::client::new();
+    let configuration = get_configuration().expect("Failed to read configuration");
 
-    //ACT
-    let body = "name=radon%20hassan&email=h4554n.abdul%40gmail.com";
+    let connection_string = configuration.database.connection_string();
+    // The `Connection` trait MUST be in scope for us to invoke `PgConnection::connect` - it is not an inherent method of the struct!
+    let mut connection = PgConnection::connect(&connection_string)
+        .await
+        .expect("Failed to connect to Postgres.");
+    let client = reqwest::Client::new();
+    // Act
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
         .post(&format!("{}/subscriptions", &app_address))
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -62,9 +74,15 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
         .send()
         .await
         .expect("Failed to execute request.");
-
-    //assert
+    // Assert
     assert_eq!(200, response.status().as_u16());
+
+    let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
+        .fetch_one(&mut connection)
+        .await
+        .expect("Failed to fetch saved subscription.");
+    assert_eq!(saved.email, "prof_radon.com");
+    assert_eq!(saved.name, "prof radon");
 }
 
 #[test::test]

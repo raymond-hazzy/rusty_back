@@ -312,3 +312,175 @@ It takes the HTTP request and its body
 It returns either Self (your type) or an error"
 
 
+What is Serde?
+Serialization + Deserialization = Serde
+
+It's a translation service between:
+
+Rust types (structs, enums, etc.)
+
+Various data formats (JSON, YAML, form data, etc.)
+
+How Serde Works:
+Imagine you're moving between countries:
+
+Your Language	↔	Translation App	↔	Foreign Language
+Rust Struct   	↔	Serde	       ↔	 JSON/Form/etc.
+The Deserialize Trait:
+rust
+pub trait Deserialize<'de>: Sized {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>;
+}
+Translation:
+
+"If you want to be deserializable, you must:
+
+Have a deserialize method
+
+It takes a deserializer (someone who understands the data format)
+
+It returns either Self (your type) or an error"
+
+Automatic Derivation:
+rust
+#[derive(serde::Deserialize)]
+struct FormData {
+    email: String,
+    name: String,
+}
+This automatically generates code that says:
+
+"To deserialize FormData, look for fields 'email' and 'name'"
+
+"Convert their values to String type"
+
+
+////////////////////////////////
+The Complete Journey: Form Submission to Handler
+Let's trace what happens step by step:
+
+Step 0: User Action
+text
+User fills form → Clicks Submit
+↓
+POST /subscribe
+Content-Type: application/x-www-form-urlencoded
+
+email=test@example.com&name=John+Doe
+Step 1: Actix-web Receives Request
+rust
+// Actix-web framework sees:
+HttpRequest {
+    method: POST,
+    path: "/subscribe",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "email=test@example.com&name=John+Doe"
+}
+Step 2: Route Matching
+rust
+// Our route definition:
+.route("/subscribe", web::post().to(subscribe))
+
+// Actix-web: "Oh, this goes to the `subscribe` handler!"
+Step 3: Argument Inspection
+rust
+// Our handler signature:
+async fn subscribe(form: web::Form<FormData>) -> HttpResponse
+
+// Actix-web: "The handler needs a `web::Form<FormData>`...
+//            I need to extract that from the request!"
+Step 4: Extraction
+rust
+// Actix-web calls:
+Form::from_request(request, payload)
+
+// Which inside does:
+// 1. Parse URL-encoded data
+let raw_data = "email=test@example.com&name=John+Doe";
+
+// 2. Use serde to convert to FormData
+let form_data = serde_urlencoded::from_str::<FormData>(raw_data);
+// Returns: FormData { email: "test@example.com", name: "John Doe" }
+
+// 3. Wrap in Form type
+Form(form_data)
+Step 5: Handler Execution
+rust
+// Now your handler runs with the extracted data
+async fn subscribe(form: web::Form<FormData>) -> HttpResponse {
+    // form.0.email = "test@example.com"
+    // form.0.name = "John Doe"
+    HttpResponse::Ok().finish()
+}
+
+/////////////
+how Serialize is implemented for a Rust vector:
+use serde::ser::{Serialize, Serializer, SerializeSeq};
+impl<T> Serialize for Vec<T>
+where
+T: Serialize,
+{
+fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+where
+S: Serializer,
+{
+let mut seq = serializer.serialize_seq(Some(self.len()))?;
+6
+You can look at serde_json’s serialize_seq implementation for confirmation. There is an optimisation for empty sequences
+(you immediately output []), but that is pretty much what is happening.50
+CHAPTER 3. SIGN UP A NEW SUBSCRIBER
+for element in self {
+seq.serialize_element(element)?;
+}
+seq.end()
+}
+}
+
+
+• before calling subscribe actix-web invokes the from_request method for all subscribe’s input ar-
+guments: in our case, Form::from_request;
+• Form::from_request tries to deserialise the body into FormData according to the rules of URL-
+encoding leveraging serde_urlencoded and the Deserialize implementation of FormData, automat-
+ically generated for us by #[derive(serde::Deserialize)];
+• if Form::from_request fails, a 400 BAD REQUEST is returned to the caller. If it succeeds, subscribe
+is invoked and we return a 200 OK.
+
+
+src/
+configuration.rs
+lib.rs
+main.rs
+routes/
+mod.rs
+health_check.rs
+subscriptions.rs
+startup.rs
+.////////////Our lib.rs file becomes
+
+
+//! src/lib.rs
+pub mod configuration;
+pub mod routes;
+pub mod startup;
+
+
+startup.rs will host our run function, health_check goes into routes/health_check.rs, subscribe and
+FormData into routes/subscriptions.rs, configuration.rs starts empty. Both handlers are re-exported
+in routes/mod.rs:
+
+.////////////! src/routes/mod.rs
+mod health_check;
+mod subscriptions;
+pub use health_check::*;
+pub use subscriptions::*;
+
+
+Reading A Configuration File To manage configuration with config we must represent our
+application settings as a Rust type that implements serde’s Deserialize trait.
+Let’s create a new Settings struct:
+
+//! src/configuration.rs
+#[derive(serde::Deserialize)]
+pub struct Settings {}

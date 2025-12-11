@@ -1,22 +1,19 @@
+#Cargo.toml
+
+
 [package]
-name = "rusty_back"
+name = "rusty_back"  # Changed to match your `use` statement
 version = "0.1.0"
 edition = "2021"
 
-# Explicitly define library
 [lib]
-path = "src/lib.rs"  # Library entry point
+path = "src/lib.rs"
 
-# Explicitly define binary
 [[bin]]
-path = "src/main.rs"  # Binary entry point
-name = "zero2prod"    # Executable name
+path = "src/main.rs"
+name = "rusty_back"  # This can be different from package name
 
 [dependencies]
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# We need the optional `derive` feature to use `serde`'s procedural macros:
-# `#[derive(Serialize)]` and `#[derive(Deserialize)]`.
-# The feature is not enabled by default to avoid pulling in
-# unnecessary dependencies for projects that do not need it.
-serde = { version = "1", features = ["derive"]}
+serde = { version = "1", features = ["derive"] }
