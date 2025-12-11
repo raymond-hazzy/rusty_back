@@ -955,6 +955,7 @@ name = "rusty_back"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "serde",
  "tokio",
 ]
 
